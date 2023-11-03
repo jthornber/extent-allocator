@@ -94,6 +94,11 @@ fn draw_tree(tree: &Tree) {
     let mut cursor = 0;
     let mut last_level = None;
     while let Some((node_index, begin, end, level, c)) = deque.pop_front() {
+        if node_index == NULL_NODE {
+            println!("NULL");
+            continue;
+        }
+
         match (last_level, level) {
             (None, level) => {
                 cursor = 0;
