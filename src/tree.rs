@@ -80,8 +80,12 @@ pub struct Tree {
 
 impl Tree {
     pub fn new(nr_blocks: u64, nr_nodes: u8) -> Self {
-        assert!(nr_nodes <= NULL_NODE);
-        let free_nodes = (0u8..nr_nodes).into_iter().collect::<Vec<u8>>();
+        #[allow(clippy::absurd_extreme_comparisons)]
+        {
+            assert!(nr_nodes <= NULL_NODE);
+        }
+
+        let free_nodes = (0u8..nr_nodes).collect::<Vec<u8>>();
         let mut tree = Tree {
             nr_blocks,
             nodes: vec![Node::default(); nr_nodes as usize],
@@ -136,7 +140,7 @@ impl Tree {
                     return false;
                 }
 
-                let copy = extent.clone();
+                let copy = *extent;
                 let mid = extent.cursor + (extent.end - extent.cursor) / 2;
                 extent.end = mid;
                 drop(extent);
@@ -230,7 +234,7 @@ impl Tree {
                         }),
                     );
                 }
-                return extent;
+                extent
             }
 
             Node::Leaf(node) => {
@@ -238,7 +242,7 @@ impl Tree {
                     // Someone is already using this extent.  See if we can split it.
                     if self.split_leaf(node_index) {
                         // Try again, now that this node is an internal node
-                        return self.borrow_(node_index);
+                        self.borrow_(node_index)
                     } else {
                         // We can't split the leaf, so we'll have to share.
                         self.write_node(
@@ -248,7 +252,7 @@ impl Tree {
                                 holders: node.holders + 1,
                             }),
                         );
-                        return Some(node.extent.clone());
+                        Some(node.extent.clone())
                     }
                 } else {
                     // No one is using this extent, so we can just take it.
@@ -259,7 +263,7 @@ impl Tree {
                             holders: node.holders + 1,
                         }),
                     );
-                    return Some(node.extent.clone());
+                    Some(node.extent.clone())
                 }
             }
         }
@@ -282,6 +286,7 @@ impl Tree {
     }
 
     // Returns the node_index of the replacement for this node (commonly the same as node_index)
+    #[allow(clippy::only_used_in_recursion)]
     fn release_(&mut self, block: u64, begin: u64, end: u64, node_index: u8) -> u8 {
         if node_index == NULL_NODE {
             return node_index;
@@ -305,7 +310,7 @@ impl Tree {
                 if left == NULL_NODE && right == NULL_NODE {
                     // Both children are NULL, so we can free this node
                     self.free_node(node_index);
-                    return NULL_NODE;
+                    NULL_NODE
                 } else {
                     self.write_node(
                         node_index,
@@ -318,7 +323,7 @@ impl Tree {
                         }),
                     );
 
-                    return node_index;
+                    node_index
                 }
             }
 
@@ -333,7 +338,7 @@ impl Tree {
                 if full {
                     // The extent is now empty, so we can free this node
                     self.free_node(node_index);
-                    return NULL_NODE;
+                    NULL_NODE
                 } else {
                     self.write_node(
                         node_index,
@@ -342,7 +347,7 @@ impl Tree {
                             holders: node.holders - 1,
                         }),
                     );
-                    return node_index;
+                    node_index
                 }
             }
         }

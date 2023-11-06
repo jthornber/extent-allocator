@@ -66,8 +66,8 @@ impl Allocator {
             }
 
             allocated.insert(block as u32);
-            extent.cursor = extent.cursor + 1;
-            return Some(block as u64);
+            extent.cursor += 1;
+            return Some(block);
         }
 
         extent.cursor = extent.end;
