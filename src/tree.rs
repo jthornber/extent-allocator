@@ -311,6 +311,12 @@ impl Tree {
                     // Both children are NULL, so we can free this node
                     self.free_node(node_index);
                     NULL_NODE
+                } else if left == NULL_NODE {
+                    self.free_node(node_index);
+                    right
+                } else if right == NULL_NODE {
+                    self.free_node(node_index);
+                    left
                 } else {
                     self.write_node(
                         node_index,
