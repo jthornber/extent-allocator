@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use std::collections::VecDeque;
 
 use crate::tree::*;
@@ -150,6 +151,32 @@ pub fn print_blocks(blocks: &[u64]) {
         }
     }
     println!("]");
+}
+
+//----------------------------------------------------------------
+
+fn checked_holders(n: Node, tree: &Tree) -> Result<usize> {
+    let nr_holders = n.nr_holders();
+
+    if let Node::Internal(n) = n {
+        let holders_left = checked_holders(tree.read_node(n.left), tree)?;
+        let holders_right = checked_holders(tree.read_node(n.right), tree)?;
+
+        if holders_left + holders_right != nr_holders {
+            return Err(anyhow!(
+                "invalid nr_holder, expected {}, actual {}",
+                nr_holders,
+                holders_left + holders_right
+            ));
+        }
+    }
+
+    Ok(nr_holders)
+}
+
+pub fn check_nr_holders(tree: &Tree) -> Result<()> {
+    checked_holders(tree.read_node(tree.root), tree)?;
+    Ok(())
 }
 
 //----------------------------------------------------------------
