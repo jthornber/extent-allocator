@@ -2,6 +2,9 @@ use std::sync::{Arc, Mutex};
 
 pub mod utils;
 
+#[cfg(test)]
+mod tests;
+
 //----------------------------------------------------------------
 
 pub const NULL_NODE: u8 = 255;
