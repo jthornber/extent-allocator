@@ -151,7 +151,7 @@ impl Tree {
                 self.write_node(
                     left_child,
                     Node::Leaf(Leaf {
-                        extent: leaf.extent.clone(),
+                        extent: leaf.extent,
                         holders: leaf.holders,
                     }),
                 );
@@ -252,7 +252,7 @@ impl Tree {
                                 holders: node.holders + 1,
                             }),
                         );
-                        Some(node.extent.clone())
+                        Some(node.extent)
                     }
                 } else {
                     // No one is using this extent, so we can just take it.
@@ -263,7 +263,7 @@ impl Tree {
                             holders: node.holders + 1,
                         }),
                     );
-                    Some(node.extent.clone())
+                    Some(node.extent)
                 }
             }
         }
@@ -349,7 +349,7 @@ impl Tree {
                     self.write_node(
                         node_index,
                         Node::Leaf(Leaf {
-                            extent: node.extent.clone(),
+                            extent: node.extent,
                             holders: node.holders - 1,
                         }),
                     );
