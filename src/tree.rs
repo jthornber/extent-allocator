@@ -1,17 +1,25 @@
-use anyhow::Result;
-use roaring::RoaringBitmap;
-use std::collections::BTreeMap;
-use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use rand::*;
+pub mod utils;
+
+#[cfg(test)]
+mod tests;
 
 //----------------------------------------------------------------
 
-const NULL_NODE: u8 = 255;
+pub const NULL_NODE: u8 = 255;
+
+//----------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug)]
-struct Internal {
+pub struct Extent {
+    pub begin: u64,
+    pub end: u64,
+    pub cursor: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Internal {
     holders: usize,
     nr_free_blocks: u64,
     cut: u64,
@@ -19,144 +27,29 @@ struct Internal {
     right: u8,
 }
 
-#[derive(Clone, Copy, Debug)]
-struct Extent {
-    begin: u64,
-    end: u64,
-    cursor: u64,
-}
-
 #[derive(Clone, Debug)]
-struct Leaf {
+pub struct Leaf {
     extent: Arc<Mutex<Extent>>,
     holders: usize,
 }
 
+//----------------------------------------------------------------
+
 #[derive(Clone, Debug)]
-enum Node {
+pub enum Node {
     Internal(Internal),
     Leaf(Leaf),
 }
 
-struct Tree {
-    nr_blocks: u64,
-    nodes: Vec<Node>,
-    free_nodes: Vec<u8>,
-    root: u8,
-}
-
-fn dump_tree(tree: &Tree) {
-    let mut stack = vec![(tree.root, 0)];
-    while let Some((node_index, indent)) = stack.pop() {
-        let pad = (0..indent).map(|_| ' ').collect::<String>();
-
-        if node_index == NULL_NODE {
-            println!("{}NULL", pad);
-            continue;
-        }
-
-        let node = tree.read_node(node_index);
-        match node {
-            Node::Internal(node) => {
-                println!(
-                    "{}Internal: cut={} holders={} nr_free={}",
-                    pad, node.cut, node.holders, node.nr_free_blocks
-                );
-                stack.push((node.right, indent + 8));
-                stack.push((node.left, indent + 8));
-            }
-
-            Node::Leaf(node) => {
-                let extent = node.extent.lock().unwrap();
-                println!(
-                    "{}Leaf: b={} e={} cursor={} holders={}",
-                    pad, extent.begin, extent.end, extent.cursor, node.holders,
-                );
-            }
-        }
-    }
-}
-
-fn char_run(c: char, fraction: f64, width: usize) -> String {
-    let nr_chars = (fraction * width as f64) as usize;
-    let mut s = String::new();
-    for _ in 0..nr_chars {
-        s.push(c);
-    }
-    s
-}
-
-fn draw_tree(tree: &Tree) {
-    let width = 100;
-    let mut deque = VecDeque::new();
-    deque.push_back((tree.root, 0, tree.nr_blocks, 0, '-'));
-
-    let mut cursor = 0;
-    let mut last_level = None;
-    while let Some((node_index, begin, end, level, c)) = deque.pop_front() {
-        match (last_level, level) {
-            (None, level) => {
-                cursor = 0;
-                last_level = Some(level);
-            }
-            (Some(last), level) => {
-                if last != level {
-                    println!();
-                    cursor = 0;
-                    last_level = Some(level);
-                }
-            }
-        }
-
-        // Print any padding we need.
-        if begin > cursor {
-            print!(
-                "{} ",
-                char_run(' ', (begin - cursor) as f64 / tree.nr_blocks as f64, width)
-            );
-        }
-
-        let node = tree.read_node(node_index);
-        match node {
-            Node::Internal(node) => {
-                // Print the node.
-                print!(
-                    "{}",
-                    char_run(c, (end - begin) as f64 / tree.nr_blocks as f64, width)
-                );
-
-                cursor = end;
-                if node.left != NULL_NODE {
-                    deque.push_back((node.left, begin, node.cut, level + 1, '/'));
-                }
-                if node.right != NULL_NODE {
-                    deque.push_back((node.right, node.cut, end, level + 1, '\\'));
-                }
-            }
-
-            Node::Leaf(_node) => {
-                // Print the node.
-                print!(
-                    "{}",
-                    char_run(c, (end - begin) as f64 / tree.nr_blocks as f64, width)
-                );
-
-                cursor = end;
-            }
-        }
-    }
-    println!();
-}
-
 impl Node {
-    fn nr_holders(&self) -> usize {
+    pub fn nr_holders(&self) -> usize {
         match self {
             Node::Internal(node) => node.holders,
             Node::Leaf(node) => node.holders,
         }
     }
 
-    fn nr_free_blocks(&self) -> u64 {
+    pub fn nr_free_blocks(&self) -> u64 {
         match self {
             Node::Internal(node) => node.nr_free_blocks,
             Node::Leaf(node) => {
@@ -179,10 +72,23 @@ impl Default for Node {
     }
 }
 
+//----------------------------------------------------------------
+
+pub struct Tree {
+    nr_blocks: u64,
+    nodes: Vec<Node>,
+    free_nodes: Vec<u8>,
+    root: u8,
+}
+
 impl Tree {
-    fn new(nr_blocks: u64, nr_nodes: u8) -> Self {
-        assert!(nr_nodes <= NULL_NODE);
-        let free_nodes = (0u8..nr_nodes).into_iter().collect::<Vec<u8>>();
+    pub fn new(nr_blocks: u64, nr_nodes: u8) -> Self {
+        #[allow(clippy::absurd_extreme_comparisons)]
+        {
+            assert!(nr_nodes <= NULL_NODE);
+        }
+
+        let free_nodes = (0u8..nr_nodes).collect::<Vec<u8>>();
         let mut tree = Tree {
             nr_blocks,
             nodes: vec![Node::default(); nr_nodes as usize],
@@ -211,7 +117,7 @@ impl Tree {
         self.free_nodes.push(node);
     }
 
-    fn read_node(&self, node: u8) -> Node {
+    pub fn read_node(&self, node: u8) -> Node {
         self.nodes[node as usize].clone()
     }
 
@@ -237,7 +143,7 @@ impl Tree {
                     return false;
                 }
 
-                let copy = extent.clone();
+                let copy = *extent;
                 let mid = extent.cursor + (extent.end - extent.cursor) / 2;
                 extent.end = mid;
                 drop(extent);
@@ -248,7 +154,7 @@ impl Tree {
                 self.write_node(
                     left_child,
                     Node::Leaf(Leaf {
-                        extent: leaf.extent.clone(),
+                        extent: leaf.extent,
                         holders: leaf.holders,
                     }),
                 );
@@ -331,7 +237,7 @@ impl Tree {
                         }),
                     );
                 }
-                return extent;
+                extent
             }
 
             Node::Leaf(node) => {
@@ -339,7 +245,7 @@ impl Tree {
                     // Someone is already using this extent.  See if we can split it.
                     if self.split_leaf(node_index) {
                         // Try again, now that this node is an internal node
-                        return self.borrow_(node_index);
+                        self.borrow_(node_index)
                     } else {
                         // We can't split the leaf, so we'll have to share.
                         self.write_node(
@@ -349,7 +255,7 @@ impl Tree {
                                 holders: node.holders + 1,
                             }),
                         );
-                        return Some(node.extent.clone());
+                        Some(node.extent)
                     }
                 } else {
                     // No one is using this extent, so we can just take it.
@@ -360,7 +266,7 @@ impl Tree {
                             holders: node.holders + 1,
                         }),
                     );
-                    return Some(node.extent.clone());
+                    Some(node.extent)
                 }
             }
         }
@@ -369,7 +275,7 @@ impl Tree {
     // Returns a region that has some free blocks.  This can
     // cause existing regions to be altered as new splits are
     // introduced to the BSP tree.
-    fn borrow(&mut self) -> Option<Arc<Mutex<Extent>>> {
+    pub fn borrow(&mut self) -> Option<Arc<Mutex<Extent>>> {
         self.borrow_(self.root)
     }
 
@@ -383,6 +289,7 @@ impl Tree {
     }
 
     // Returns the node_index of the replacement for this node (commonly the same as node_index)
+    #[allow(clippy::only_used_in_recursion)]
     fn release_(&mut self, block: u64, begin: u64, end: u64, node_index: u8) -> u8 {
         if node_index == NULL_NODE {
             return node_index;
@@ -406,7 +313,13 @@ impl Tree {
                 if left == NULL_NODE && right == NULL_NODE {
                     // Both children are NULL, so we can free this node
                     self.free_node(node_index);
-                    return NULL_NODE;
+                    NULL_NODE
+                } else if left == NULL_NODE {
+                    self.free_node(node_index);
+                    right
+                } else if right == NULL_NODE {
+                    self.free_node(node_index);
+                    left
                 } else {
                     self.write_node(
                         node_index,
@@ -419,7 +332,7 @@ impl Tree {
                         }),
                     );
 
-                    return node_index;
+                    node_index
                 }
             }
 
@@ -434,22 +347,22 @@ impl Tree {
                 if full {
                     // The extent is now empty, so we can free this node
                     self.free_node(node_index);
-                    return NULL_NODE;
+                    NULL_NODE
                 } else {
                     self.write_node(
                         node_index,
                         Node::Leaf(Leaf {
-                            extent: node.extent.clone(),
+                            extent: node.extent,
                             holders: node.holders - 1,
                         }),
                     );
-                    return node_index;
+                    node_index
                 }
             }
         }
     }
 
-    fn release(&mut self, extent: Arc<Mutex<Extent>>) {
+    pub fn release(&mut self, extent: Arc<Mutex<Extent>>) {
         // eprintln!("before release:");
         // dump_tree(&self.root, 0);
 
@@ -463,165 +376,9 @@ impl Tree {
         // dump_tree(&self.root, 0);
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         todo!()
     }
 }
 
 //----------------------------------------------------------------
-
-struct Allocator {
-    nr_blocks: u64,
-    allocated: Mutex<RoaringBitmap>,
-    extents: Tree,
-}
-
-impl Allocator {
-    fn new(nr_blocks: u64, nr_nodes: u8) -> Self {
-        // Create a tree that brackets the entire address space
-        let extents = Tree::new(nr_blocks, nr_nodes);
-
-        Allocator {
-            nr_blocks,
-            allocated: Mutex::new(RoaringBitmap::new()),
-            extents,
-        }
-    }
-
-    fn preallocate_random(&mut self, count: u64) {
-        let mut allocated = self.allocated.lock().unwrap();
-        for _ in 0..count {
-            loop {
-                let block = rand::random::<u64>() % self.nr_blocks;
-                if !allocated.contains(block as u32) {
-                    allocated.insert(block as u32);
-                    break;
-                }
-            }
-        }
-    }
-
-    // FIXME: try with an offset
-    fn preallocate_linear(&mut self, count: u64, offset: u64) {
-        assert!(offset + count <= self.nr_blocks);
-        let mut allocated = self.allocated.lock().unwrap();
-        for block in 0..count {
-            allocated.insert((offset + block) as u32);
-        }
-    }
-
-    fn get_extent(&mut self) -> Option<Arc<Mutex<Extent>>> {
-        self.extents.borrow()
-    }
-
-    fn put_extent(&mut self, extent: Arc<Mutex<Extent>>) {
-        self.extents.release(extent);
-    }
-
-    fn alloc(&mut self, extent: Arc<Mutex<Extent>>) -> Option<u64> {
-        let mut extent = extent.lock().unwrap();
-        let mut allocated = self.allocated.lock().unwrap();
-
-        for block in extent.cursor..extent.end {
-            if allocated.contains(block as u32) {
-                continue;
-            }
-
-            allocated.insert(block as u32);
-            extent.cursor = extent.cursor + 1;
-            return Some(block as u64);
-        }
-
-        extent.cursor = extent.end;
-        None
-    }
-}
-
-//----------------------------------------------------------------
-
-struct AllocContext {
-    extent: Option<Arc<Mutex<Extent>>>,
-    blocks: Vec<u64>,
-}
-
-fn to_runs(blocks: &[u64]) -> Vec<(u64, u64)> {
-    let mut runs = Vec::new();
-    let mut begin = blocks[0];
-    let mut end = begin;
-    for &block in blocks.iter().skip(1) {
-        if block == end + 1 {
-            end = block;
-        } else {
-            runs.push((begin, end));
-            begin = block;
-            end = block;
-        }
-    }
-    runs.push((begin, end));
-    runs
-}
-
-fn print_blocks(blocks: &[u64]) {
-    let runs = to_runs(blocks);
-    let mut first = true;
-    print!("[");
-    for (begin, end) in runs {
-        if first {
-            first = false;
-        } else {
-            print!(", ");
-        }
-        if begin == end {
-            print!("{}", begin);
-        } else {
-            print!("{}..{}", begin, end);
-        }
-    }
-    println!("]");
-}
-
-fn main() {
-    // Check we can handle a non-power-of-two number of blocks
-    let nr_blocks = 1024;
-    let nr_nodes = 255;
-    let nr_allocators = 16;
-
-    let mut allocator = Allocator::new(nr_blocks, nr_nodes);
-    allocator.preallocate_linear(nr_blocks / 5, 100);
-
-    let mut contexts = Vec::new();
-    for _i in 0..nr_allocators {
-        contexts.push(AllocContext {
-            extent: allocator.get_extent(),
-            blocks: Vec::new(),
-        });
-    }
-
-    for i in 0..(nr_blocks / 2) {
-        let mut context = &mut contexts[(i % nr_allocators) as usize];
-        loop {
-            let extent = context.extent.as_ref().unwrap().clone();
-            let block = allocator.alloc(extent.clone());
-            if let Some(block) = block {
-                context.blocks.push(block);
-                break;
-            }
-
-            allocator.put_extent(extent.clone());
-            context.extent = allocator.get_extent();
-        }
-    }
-
-    //   dump_tree(&allocator.extents);
-    //   draw_tree(&allocator.extents);
-
-    for context in &mut contexts {
-        let extent = context.extent.take();
-
-        allocator.put_extent(extent.unwrap());
-        print_blocks(&context.blocks);
-    }
-
-    dump_tree(&allocator.extents);
-    draw_tree(&allocator.extents);
-}
