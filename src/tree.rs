@@ -364,7 +364,7 @@ impl Tree {
 
     pub fn release(&mut self, extent: Arc<Mutex<Extent>>) {
         // eprintln!("before release:");
-        // dump_tree(&self.root, 0);
+        // utils::dump_tree(&self);
 
         let extent = extent.lock().unwrap();
         let b = extent.begin;
@@ -373,7 +373,7 @@ impl Tree {
         self.root = self.release_(b, 0, self.nr_blocks, self.root);
 
         // eprintln!("after release:");
-        // dump_tree(&self.root, 0);
+        // utils::dump_tree(&self);
     }
 
     pub fn reset(&mut self) {
