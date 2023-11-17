@@ -96,17 +96,21 @@ impl Tree {
             root: NULL_NODE,
         };
 
-        tree.root = tree.alloc_node().unwrap();
-        tree.nodes[tree.root as usize] = Node::Leaf(Leaf {
+        tree.setup_initial_root();
+
+        tree
+    }
+
+    fn setup_initial_root(&mut self) {
+        self.root = self.alloc_node().unwrap();
+        self.nodes[self.root as usize] = Node::Leaf(Leaf {
             extent: Arc::new(Mutex::new(Extent {
                 begin: 0,
-                end: nr_blocks,
+                end: self.nr_blocks,
                 cursor: 0,
             })),
             holders: 0,
         });
-
-        tree
     }
 
     fn alloc_node(&mut self) -> Option<u8> {
@@ -115,6 +119,10 @@ impl Tree {
 
     fn free_node(&mut self, node: u8) {
         self.free_nodes.push(node);
+    }
+
+    fn get_mut(&mut self, node: u8) -> &mut Node {
+        &mut self.nodes[node as usize]
     }
 
     pub fn read_node(&self, node: u8) -> Node {
@@ -364,7 +372,7 @@ impl Tree {
 
     pub fn release(&mut self, extent: Arc<Mutex<Extent>>) {
         // eprintln!("before release:");
-        // dump_tree(&self.root, 0);
+        // utils::dump_tree(&self);
 
         let extent = extent.lock().unwrap();
         let b = extent.begin;
@@ -373,11 +381,40 @@ impl Tree {
         self.root = self.release_(b, 0, self.nr_blocks, self.root);
 
         // eprintln!("after release:");
-        // dump_tree(&self.root, 0);
+        // utils::dump_tree(&self);
+    }
+
+    fn free_tree(&mut self, root: u8) {
+        if root == NULL_NODE {
+            return;
+        }
+
+        let node = self.get_mut(root);
+        match node {
+            Node::Internal(node) => {
+                let (left, right) = (node.left, node.right);
+                self.free_tree(left);
+                self.free_tree(right);
+                self.free_node(root);
+            }
+            Node::Leaf(_) => {
+                self.free_node(root);
+            }
+        }
+    }
+
+    fn reset_(&mut self, nr_blocks: u64) {
+        self.free_tree(self.root);
+        self.nr_blocks = nr_blocks;
+        self.setup_initial_root();
     }
 
     pub fn reset(&mut self) {
-        todo!()
+        self.reset_(self.nr_blocks);
+    }
+
+    pub fn resize(&mut self, nr_blocks: u64) {
+        self.reset_(nr_blocks);
     }
 }
 
