@@ -128,4 +128,89 @@ fn reuse_node() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn borrow_after_reset() -> Result<()> {
+    let nr_blocks = 1024;
+    let nr_nodes = 3;
+
+    let mut extents = Vec::new();
+    let mut tree = Tree::new(nr_blocks, nr_nodes);
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 0);
+
+    extents.clear();
+    tree.reset();
+
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 2);
+    {
+        let ext = extents[0].lock().unwrap();
+        ensure!(ext.begin == 0);
+        ensure!(ext.end == nr_blocks);
+        ensure!(ext.cursor == 0);
+    }
+
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 0);
+    let div = nr_blocks / 2;
+    {
+        let ext = extents[0].lock().unwrap();
+        ensure!(ext.begin == 0);
+        ensure!(ext.end == div);
+        ensure!(ext.cursor == ext.begin);
+    }
+    {
+        let ext = extents[1].lock().unwrap();
+        ensure!(ext.begin == div);
+        ensure!(ext.end == nr_blocks);
+        ensure!(ext.cursor == ext.begin);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn borrow_after_resize() -> Result<()> {
+    let nr_blocks = 1024;
+    let nr_nodes = 3;
+
+    let mut extents = Vec::new();
+    let mut tree = Tree::new(nr_blocks, nr_nodes);
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 0);
+
+    extents.clear();
+    let nr_blocks = 2048;
+    tree.resize(nr_blocks);
+
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 2);
+    {
+        let ext = extents[0].lock().unwrap();
+        ensure!(ext.begin == 0);
+        ensure!(ext.end == nr_blocks);
+        ensure!(ext.cursor == 0);
+    }
+
+    extents.push(tree.borrow().unwrap());
+    ensure!(tree.free_nodes.len() == 0);
+    let div = nr_blocks / 2;
+    {
+        let ext = extents[0].lock().unwrap();
+        ensure!(ext.begin == 0);
+        ensure!(ext.end == div);
+        ensure!(ext.cursor == ext.begin);
+    }
+    {
+        let ext = extents[1].lock().unwrap();
+        ensure!(ext.begin == div);
+        ensure!(ext.end == nr_blocks);
+        ensure!(ext.cursor == ext.begin);
+    }
+
+    Ok(())
+}
+
 //----------------------------------------------------------------
