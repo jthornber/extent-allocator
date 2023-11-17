@@ -165,6 +165,26 @@ impl Allocator {
             reset_chained_contexts(&mut ac);
         }
     }
+
+    fn reset_all_contexts(&mut self) {
+        let mut holders = BTreeMap::new();
+        std::mem::swap(&mut holders, &mut self.holders);
+
+        for (_, holders) in holders {
+            let mut ac = holders.lock().unwrap();
+            reset_chained_contexts(&mut ac);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.reset_all_contexts();
+        self.extents.reset();
+    }
+
+    pub fn resize(&mut self, nr_blocks: u64) {
+        self.reset_all_contexts();
+        self.extents.resize(nr_blocks);
+    }
 }
 
 //----------------------------------------------------------------

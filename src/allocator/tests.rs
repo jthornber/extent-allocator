@@ -202,4 +202,56 @@ fn test_prealloc_random() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn alloc_after_reset() -> Result<()> {
+    let nr_blocks = 1024;
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+    let nr_prealloc = nr_blocks / 5;
+
+    preallocate_linear(&mut allocated.lock().unwrap(), nr_prealloc, 0);
+
+    let nr_nodes = 1;
+    let mut allocator = Allocator::new(nr_blocks, nr_nodes);
+    let mut context = AllocationContext::new(allocator.get_context());
+
+    while let Ok(Some(_)) = context_alloc(&mut context, &mut allocator, &allocated) {}
+
+    ensure!(context.blocks.len() as u64 == nr_blocks - nr_prealloc);
+
+    allocated
+        .lock()
+        .unwrap()
+        .remove_range(0..(nr_prealloc as u32));
+    allocator.reset();
+
+    while let Ok(Some(_)) = context_alloc(&mut context, &mut allocator, &allocated) {}
+
+    ensure!(context.blocks.len() as u64 == nr_blocks);
+
+    Ok(())
+}
+
+#[test]
+fn alloc_after_resize() -> Result<()> {
+    let nr_blocks = 1024;
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+
+    let nr_nodes = 1;
+    let mut allocator = Allocator::new(nr_blocks, nr_nodes);
+    let mut context = AllocationContext::new(allocator.get_context());
+
+    while let Ok(Some(_)) = context_alloc(&mut context, &mut allocator, &allocated) {}
+
+    ensure!(context.blocks.len() as u64 == nr_blocks);
+
+    let nr_blocks = 2048;
+    allocator.resize(nr_blocks);
+
+    while let Ok(Some(_)) = context_alloc(&mut context, &mut allocator, &allocated) {}
+
+    ensure!(context.blocks.len() as u64 == nr_blocks);
+
+    Ok(())
+}
+
 //----------------------------------------------------------------
