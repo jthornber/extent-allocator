@@ -83,6 +83,15 @@ fn release_shared_extent() -> Result<()> {
     tree.release(extents.remove(0));
     tree.release(extents.remove(0));
 
+    // ensure no node is being freed
+    ensure!(tree.free_nodes.len() == 0);
+
+    // verify the number of holders
+    let root = tree.read_node(tree.root);
+    ensure!(root.nr_holders() == 2);
+    ensure!(matches!(root, Node::Internal(_)));
+    check_nr_holders(&tree)?;
+
     Ok(())
 }
 
