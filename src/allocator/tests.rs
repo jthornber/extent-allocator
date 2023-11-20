@@ -203,6 +203,40 @@ fn test_prealloc_random() -> Result<()> {
 }
 
 #[test]
+fn test_non_power_of_two_blocks() -> Result<()> {
+    let nr_blocks = 1031;
+    let nr_contexts = 16;
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+
+    let contexts = do_allocation_test(nr_blocks, nr_contexts, allocated, nr_blocks)?;
+
+    for context in contexts {
+        print_blocks(&context.blocks);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn alloc_no_space() -> Result<()> {
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+
+    let nr_blocks = 1024;
+    let nr_nodes = 1;
+    let mut allocator = Allocator::new(nr_blocks, nr_nodes);
+    let mut context = AllocationContext::new(allocator.get_context());
+
+    while let Ok(Some(_)) = context_alloc(&mut context, &mut allocator, &allocated) {}
+
+    ensure!(matches!(
+        context_alloc(&mut context, &mut allocator, &allocated),
+        Ok(None)
+    ));
+
+    Ok(())
+}
+
+#[test]
 fn alloc_after_reset() -> Result<()> {
     let nr_blocks = 1024;
     let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
