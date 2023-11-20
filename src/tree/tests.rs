@@ -222,4 +222,35 @@ fn borrow_after_resize() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn remove_shared_extent() -> Result<()> {
+    let nr_blocks = 1024;
+    let nr_nodes = 7;
+
+    let mut extents = Vec::new();
+    let mut tree = Tree::new(nr_blocks, nr_nodes);
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+    extents.push(tree.borrow().unwrap());
+
+    let root = tree.read_node(tree.root);
+    ensure!(root.nr_holders() == 5);
+
+    {
+        let extent = extents.pop().unwrap();
+        let mut ext = extent.lock().unwrap();
+        ext.cursor = ext.end;
+        drop(ext);
+        tree.release(extent);
+    }
+
+    let root = tree.read_node(tree.root);
+    ensure!(root.nr_holders() == 3);
+    check_nr_holders(&tree)?;
+
+    Ok(())
+}
+
 //----------------------------------------------------------------

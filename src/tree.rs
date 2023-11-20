@@ -298,9 +298,9 @@ impl Tree {
 
     // Returns the node_index of the replacement for this node (commonly the same as node_index)
     #[allow(clippy::only_used_in_recursion)]
-    fn release_(&mut self, block: u64, begin: u64, end: u64, node_index: u8) -> u8 {
+    fn release_(&mut self, block: u64, begin: u64, end: u64, node_index: u8) -> (u8, usize) {
         if node_index == NULL_NODE {
-            return node_index;
+            return (node_index, 0);
         }
 
         let node = self.read_node(node_index);
@@ -310,37 +310,38 @@ impl Tree {
                 assert!(node.holders > 0);
                 let mut left = node.left;
                 let mut right = node.right;
+                let delta;
 
                 // FIXME: refactor
                 if block < node.cut {
-                    left = self.release_(block, begin, node.cut, node.left);
+                    (left, delta) = self.release_(block, begin, node.cut, node.left);
                 } else {
-                    right = self.release_(block, node.cut, end, node.right);
+                    (right, delta) = self.release_(block, node.cut, end, node.right);
                 }
 
                 if left == NULL_NODE && right == NULL_NODE {
                     // Both children are NULL, so we can free this node
                     self.free_node(node_index);
-                    NULL_NODE
+                    (NULL_NODE, delta)
                 } else if left == NULL_NODE {
                     self.free_node(node_index);
-                    right
+                    (right, delta)
                 } else if right == NULL_NODE {
                     self.free_node(node_index);
-                    left
+                    (left, delta)
                 } else {
                     self.write_node(
                         node_index,
                         Node::Internal(Internal {
                             cut: node.cut,
-                            holders: node.holders - 1,
+                            holders: node.holders - delta,
                             nr_free_blocks: self.nr_free(left) + self.nr_free(right),
                             left,
                             right,
                         }),
                     );
 
-                    node_index
+                    (node_index, delta)
                 }
             }
 
@@ -349,13 +350,16 @@ impl Tree {
 
                 // See if the extent is now empty
                 let extent = node.extent.lock().unwrap();
+                assert!(begin <= extent.begin);
+                assert!(end >= extent.end);
+
                 let full = extent.cursor == extent.end;
                 drop(extent);
 
                 if full {
                     // The extent is now empty, so we can free this node
                     self.free_node(node_index);
-                    NULL_NODE
+                    (NULL_NODE, node.holders)
                 } else {
                     self.write_node(
                         node_index,
@@ -364,7 +368,7 @@ impl Tree {
                             holders: node.holders - 1,
                         }),
                     );
-                    node_index
+                    (node_index, 1)
                 }
             }
         }
@@ -378,7 +382,7 @@ impl Tree {
         let b = extent.begin;
         drop(extent);
 
-        self.root = self.release_(b, 0, self.nr_blocks, self.root);
+        (self.root, _) = self.release_(b, 0, self.nr_blocks, self.root);
 
         // eprintln!("after release:");
         // utils::dump_tree(&self);
