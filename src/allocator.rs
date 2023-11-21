@@ -124,8 +124,8 @@ impl Allocator {
             .entry(extent_begin)
             .and_modify(|head| {
                 ctx.next = Some(head.clone());
-                let mut h = head.lock().unwrap();
-                h.prev = Some(Arc::<Mutex<AllocContext>>::downgrade(context));
+                head.lock().unwrap().prev = Some(Arc::<Mutex<AllocContext>>::downgrade(context));
+                std::mem::swap(&mut context.clone(), head);
             })
             .or_insert(context.clone());
     }

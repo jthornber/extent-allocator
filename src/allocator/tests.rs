@@ -122,6 +122,37 @@ fn do_allocation_test(
     Ok(contexts)
 }
 
+fn do_reset_test(nr_contexts: usize) -> Result<()> {
+    let nr_blocks = 1024;
+    let mut allocator = Allocator::new(nr_blocks, 1);
+
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+    preallocate_linear(
+        &mut allocated.lock().unwrap(),
+        nr_blocks - nr_contexts as u64,
+        0,
+    );
+
+    let mut contexts = Vec::new();
+    for _i in 0..nr_contexts {
+        contexts.push(AllocationContext::new(allocator.get_context()));
+    }
+
+    for context in &mut contexts {
+        ensure!(matches!(
+            context_alloc(context, &mut allocator, &allocated),
+            Ok(Some(_))
+        ));
+    }
+
+    for context in &mut contexts {
+        let ctx = context.inner.as_ref().unwrap();
+        ensure!(ctx.lock().unwrap().extent.is_none());
+    }
+
+    Ok(())
+}
+
 //----------------------------------------------------------------
 
 // TODO: Check we can handle a non-power-of-two number of blocks
@@ -286,6 +317,16 @@ fn alloc_after_resize() -> Result<()> {
     ensure!(context.blocks.len() as u64 == nr_blocks);
 
     Ok(())
+}
+
+#[test]
+fn reset_two_holders() -> Result<()> {
+    do_reset_test(2)
+}
+
+#[test]
+fn reset_three_holders() -> Result<()> {
+    do_reset_test(3)
 }
 
 //----------------------------------------------------------------
