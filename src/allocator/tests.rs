@@ -153,6 +153,36 @@ fn do_reset_test(nr_contexts: usize) -> Result<()> {
     Ok(())
 }
 
+fn do_remove_holders_test(reorder: &dyn Fn(&mut Vec<AllocationContext>)) -> Result<()> {
+    let nr_blocks = 1024;
+    let mut allocator = Allocator::new(nr_blocks, 1);
+
+    let allocated = Arc::new(Mutex::new(RoaringBitmap::new()));
+
+    let mut contexts = Vec::new();
+    let nr_contexts = 3;
+    for _i in 0..nr_contexts {
+        contexts.push(AllocationContext::new(allocator.get_context()));
+    }
+
+    for context in &mut contexts {
+        ensure!(matches!(
+            context_alloc(context, &mut allocator, &allocated),
+            Ok(Some(_))
+        ));
+    }
+
+    reorder(&mut contexts);
+
+    for mut context in contexts {
+        allocator.put_context(context.inner.take().unwrap());
+    }
+
+    ensure!(allocator.holders.is_empty());
+
+    Ok(())
+}
+
 //----------------------------------------------------------------
 
 // TODO: Check we can handle a non-power-of-two number of blocks
@@ -327,6 +357,28 @@ fn reset_two_holders() -> Result<()> {
 #[test]
 fn reset_three_holders() -> Result<()> {
     do_reset_test(3)
+}
+
+#[test]
+fn remove_holders_backward() -> Result<()> {
+    // remove contexts, starting from the tail of the holders list
+    do_remove_holders_test(&|_| {})
+}
+
+#[test]
+fn remove_holders_forward() -> Result<()> {
+    // remove contexts, starting from the head of the holders list
+    do_remove_holders_test(&|contexts| {
+        contexts.swap(0, 2);
+    })
+}
+
+#[test]
+fn remove_holders_from_middle() -> Result<()> {
+    do_remove_holders_test(&|contexts| {
+        let c = contexts.remove(0);
+        contexts.push(c);
+    })
 }
 
 //----------------------------------------------------------------
