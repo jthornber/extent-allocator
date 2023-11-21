@@ -19,8 +19,8 @@ pub fn dump_tree(tree: &Tree) {
         match node {
             Node::Internal(node) => {
                 println!(
-                    "{}Internal: cut={} holders={} nr_free={}",
-                    pad, node.cut, node.holders, node.nr_free_blocks
+                    "{}Internal: cut={} holders={} nr_free={} idx={}",
+                    pad, node.cut, node.holders, node.nr_free_blocks, node_index
                 );
                 stack.push((node.right, indent + 8));
                 stack.push((node.left, indent + 8));
@@ -29,8 +29,8 @@ pub fn dump_tree(tree: &Tree) {
             Node::Leaf(node) => {
                 let extent = node.extent.lock().unwrap();
                 println!(
-                    "{}Leaf: b={} e={} cursor={} holders={}",
-                    pad, extent.begin, extent.end, extent.cursor, node.holders,
+                    "{}Leaf: b={} e={} cursor={} holders={} idx={}",
+                    pad, extent.begin, extent.end, extent.cursor, node.holders, node_index
                 );
             }
         }
