@@ -124,28 +124,31 @@ impl Allocator {
             .entry(extent_begin)
             .and_modify(|head| {
                 ctx.next = Some(head.clone());
-                let mut h = head.lock().unwrap();
-                h.prev = Some(Arc::<Mutex<AllocContext>>::downgrade(context));
+                head.lock().unwrap().prev = Some(Arc::<Mutex<AllocContext>>::downgrade(context));
+                std::mem::swap(&mut context.clone(), head);
             })
             .or_insert(context.clone());
     }
 
     fn remove_holder(&mut self, extent_begin: u64, ctx: &mut AllocContext) {
-        if ctx.prev.is_none() && ctx.next.is_none() {
-            self.holders.remove(&extent_begin);
-            return;
-        }
-
-        if let Some(prev) = ctx.prev.take() {
-            if let Some(prev) = prev.upgrade() {
-                let mut prev = prev.lock().unwrap();
-                prev.next = ctx.next.take();
+        match (ctx.prev.take(), ctx.next.take()) {
+            (None, None) => {
+                self.holders.remove(&extent_begin);
             }
-        }
-
-        if let Some(next) = ctx.next.take() {
-            let mut next = next.lock().unwrap();
-            next.prev = ctx.prev.take();
+            (None, Some(mut next)) => {
+                self.holders.entry(extent_begin).and_modify(|head| {
+                    next.lock().unwrap().prev = None;
+                    std::mem::swap(&mut next, head);
+                });
+            }
+            (Some(prev), next) => {
+                if let Some(p) = prev.upgrade() {
+                    p.lock().unwrap().next = next.clone();
+                }
+                if let Some(next) = next {
+                    next.lock().unwrap().prev = Some(prev);
+                }
+            }
         }
     }
 
